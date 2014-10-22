@@ -18,29 +18,22 @@
 
 package org.apache.hadoop.security.ssl;
 
+import org.apache.commons.lang.reflect.ConstructorUtils;
+import org.apache.commons.lang.reflect.FieldUtils;
+import org.apache.commons.lang.reflect.MethodUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.alias.CredentialProvider;
 import org.apache.hadoop.security.alias.CredentialProviderFactory;
 import org.apache.hadoop.security.alias.JavaKeyStoreProvider;
 
-import sun.security.x509.AlgorithmId;
-import sun.security.x509.CertificateAlgorithmId;
-import sun.security.x509.CertificateIssuerName;
-import sun.security.x509.CertificateSerialNumber;
-import sun.security.x509.CertificateSubjectName;
-import sun.security.x509.CertificateValidity;
-import sun.security.x509.CertificateVersion;
-import sun.security.x509.CertificateX509Key;
-import sun.security.x509.X500Name;
-import sun.security.x509.X509CertImpl;
-import sun.security.x509.X509CertInfo;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.math.BigInteger;
 import java.net.URL;
 import java.security.GeneralSecurityException;
@@ -57,6 +50,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.apache.hadoop.util.PlatformName.IBM_JAVA;
+
 public class KeyStoreTestUtil {
 
   public static String getClasspathDir(Class klass) throws Exception {
@@ -66,6 +61,50 @@ public class KeyStoreTestUtil {
     String baseDir = url.toURI().getPath();
     baseDir = baseDir.substring(0, baseDir.length() - file.length() - 1);
     return baseDir;
+  }
+  
+  private static String getClassName(String clazzSimpleName) {
+    if (IBM_JAVA) {
+      return "com.ibm.security.x509." + clazzSimpleName;
+    } else {
+      return "sun.security.x509." + clazzSimpleName;
+    }
+  }
+  
+  private static Object getInstance(String clazzSimpleName, Object... args) throws NoSuchMethodException,
+      IllegalAccessException, InvocationTargetException, InstantiationException, ClassNotFoundException {
+    Class<?> internalClazz;
+
+    internalClazz = Class.forName(getClassName(clazzSimpleName));
+
+    return ConstructorUtils.invokeExactConstructor(internalClazz, args);
+  }
+
+  private static Object getStaticField(String clazzSimpleName, String fieldName) throws ClassNotFoundException,
+      IllegalAccessException {
+    Class<?> internalClazz;
+
+    internalClazz = Class.forName(getClassName(clazzSimpleName));
+
+    return FieldUtils.readStaticField(internalClazz, fieldName);
+  }
+  
+  private static String getStaticStringField(String clazzSimpleName, String fieldName) throws ClassNotFoundException,
+      IllegalArgumentException, IllegalAccessException {
+    Class<?> internalClazz;
+    Field staticStringField;
+
+    internalClazz = Class.forName(getClassName(clazzSimpleName));
+    staticStringField = FieldUtils.getField(internalClazz, fieldName);
+    if (staticStringField != null && String.class == staticStringField.getType()) {
+      return (String) staticStringField.get(null);
+    }
+    return "";
+  }
+  
+  private static void setCertInfo(Object certInfo, String paramString, Object paramObject)
+      throws NoSuchMethodException, IllegalAccessException, InvocationTargetException {
+    MethodUtils.invokeExactMethod(certInfo, "set", new Object[] { paramString, paramObject });
   }
 
   /**
@@ -79,40 +118,51 @@ public class KeyStoreTestUtil {
    * @return the self-signed certificate
    * @throws IOException thrown if an IO error ocurred.
    * @throws GeneralSecurityException thrown if an Security error ocurred.
+   * @throws ClassNotFoundException 
+   * @throws InstantiationException 
+   * @throws InvocationTargetException 
+   * @throws IllegalAccessException 
+   * @throws NoSuchMethodException 
    */
   public static X509Certificate generateCertificate(String dn, KeyPair pair,
       int days, String algorithm)
-      throws GeneralSecurityException, IOException {
+      throws GeneralSecurityException, IOException, NoSuchMethodException, IllegalAccessException, 
+      InvocationTargetException, InstantiationException, ClassNotFoundException {
     PrivateKey privkey = pair.getPrivate();
-    X509CertInfo info = new X509CertInfo();
+    Object info = getInstance("X509CertInfo");
     Date from = new Date();
     Date to = new Date(from.getTime() + days * 86400000l);
-    CertificateValidity interval = new CertificateValidity(from, to);
+    Object interval = getInstance("CertificateValidity", from, to);
     BigInteger sn = new BigInteger(64, new SecureRandom());
-    X500Name owner = new X500Name(dn);
+    Object owner = getInstance("X500Name", dn);
 
-    info.set(X509CertInfo.VALIDITY, interval);
-    info.set(X509CertInfo.SERIAL_NUMBER, new CertificateSerialNumber(sn));
-    info.set(X509CertInfo.SUBJECT, new CertificateSubjectName(owner));
-    info.set(X509CertInfo.ISSUER, new CertificateIssuerName(owner));
-    info.set(X509CertInfo.KEY, new CertificateX509Key(pair.getPublic()));
-    info
-        .set(X509CertInfo.VERSION, new CertificateVersion(CertificateVersion.V3));
-    AlgorithmId algo = new AlgorithmId(AlgorithmId.md5WithRSAEncryption_oid);
-    info.set(X509CertInfo.ALGORITHM_ID, new CertificateAlgorithmId(algo));
+    setCertInfo(info, getStaticStringField("X509CertInfo", "VALIDITY"), interval);
+    setCertInfo(info, getStaticStringField("X509CertInfo", "SERIAL_NUMBER"), 
+        getInstance("CertificateSerialNumber", sn));
+    setCertInfo(info, getStaticStringField("X509CertInfo", "SUBJECT"), 
+        getInstance("CertificateSubjectName", owner));
+    setCertInfo(info, getStaticStringField("X509CertInfo", "ISSUER"), 
+        getInstance("CertificateIssuerName", owner));
+    setCertInfo(info, getStaticStringField("X509CertInfo", "KEY"), 
+        getInstance("CertificateX509Key", pair.getPublic()));
+    setCertInfo(info, getStaticStringField("X509CertInfo", "VERSION"), 
+        getInstance("CertificateVersion", getStaticField("CertificateVersion", "V3")));
+    Object algo = getInstance("AlgorithmId", "md5WithRSAEncryption_oid");
+    setCertInfo(info, getStaticStringField("X509CertInfo", "ALGORITHM_ID"), 
+        getInstance("CertificateAlgorithmId", algo));
 
     // Sign the cert to identify the algorithm that's used.
-    X509CertImpl cert = new X509CertImpl(info);
-    cert.sign(privkey, algorithm);
+    Object cert = getInstance("X509CertImpl", info);
+    MethodUtils.invokeExactMethod(cert, "sign", new Object[] {privkey, algorithm});
 
     // Update the algorith, and resign.
-    algo = (AlgorithmId) cert.get(X509CertImpl.SIG_ALG);
-    info
-        .set(CertificateAlgorithmId.NAME + "." + CertificateAlgorithmId.ALGORITHM,
-            algo);
-    cert = new X509CertImpl(info);
-    cert.sign(privkey, algorithm);
-    return cert;
+    algo = MethodUtils.invokeExactMethod(cert, "get", getStaticField("X509CertImpl", "SIG_ALG"));
+    setCertInfo(info, 
+        getStaticStringField("CertificateAlgorithmId", "NAME") + "." +
+            getStaticStringField("CertificateAlgorithmId", "ALGORITHM"), algo);
+    cert = getInstance("X509CertImpl", info);
+    MethodUtils.invokeExactMethod(cert, "sign", new Object[] {privkey, algorithm});
+    return X509Certificate.class.cast(cert);
   }
 
   public static KeyPair generateKeyPair(String algorithm)
