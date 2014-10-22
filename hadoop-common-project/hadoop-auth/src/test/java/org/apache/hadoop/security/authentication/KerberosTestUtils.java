@@ -22,6 +22,7 @@ import javax.security.auth.login.LoginContext;
 import org.apache.hadoop.security.authentication.util.KerberosUtil;
 
 import java.io.File;
+import java.net.MalformedURLException;
 import java.security.Principal;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
@@ -31,6 +32,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+
+import static org.apache.hadoop.util.PlatformName.IBM_JAVA;
 
 /**
  * Test helper class for Java Kerberos setup.
@@ -65,18 +68,32 @@ public class KerberosTestUtils {
     @Override
     public AppConfigurationEntry[] getAppConfigurationEntry(String name) {
       Map<String, String> options = new HashMap<String, String>();
-      options.put("keyTab", KerberosTestUtils.getKeytabFile());
       options.put("principal", principal);
-      options.put("useKeyTab", "true");
-      options.put("storeKey", "true");
-      options.put("doNotPrompt", "true");
-      options.put("useTicketCache", "true");
-      options.put("renewTGT", "true");
-      options.put("refreshKrb5Config", "true");
-      options.put("isInitiator", "true");
+      if (IBM_JAVA) {
+        try {
+          options.put("useKeytab", 
+              new File(KerberosTestUtils.getKeytabFile()).getAbsoluteFile().toURI().toURL().toString());
+        } catch (MalformedURLException e) {
+        }
+        options.put("credsType", "both");
+      } else {
+        options.put("keyTab", KerberosTestUtils.getKeytabFile());
+        options.put("useKeyTab", "true");
+        options.put("storeKey", "true");
+        options.put("doNotPrompt", "true");
+        options.put("useTicketCache", "true");
+        options.put("renewTGT", "true");
+        options.put("refreshKrb5Config", "true");
+        options.put("isInitiator", "true");
+      }
       String ticketCache = System.getenv("KRB5CCNAME");
       if (ticketCache != null) {
-        options.put("ticketCache", ticketCache);
+        if (IBM_JAVA) {
+          options.put("useDefaultCcache", "true");
+          System.setProperty("KRB5CCNAME", ticketCache);
+        } else {
+          options.put("ticketCache", ticketCache);
+        }
       }
       options.put("debug", "true");
 

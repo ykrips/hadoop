@@ -271,8 +271,13 @@ public class KerberosAuthenticator implements Authenticator {
             GSSName serviceName = gssManager.createName(servicePrincipal,
                                                         oid);
             oid = KerberosUtil.getOidInstance("GSS_KRB5_MECH_OID");
-            gssContext = gssManager.createContext(serviceName, oid, null,
+            if (IBM_JAVA) {
+              gssContext = gssManager.createContext(serviceName, oid, null,
+                                                  86400000);
+            } else {
+              gssContext = gssManager.createContext(serviceName, oid, null,
                                                   GSSContext.DEFAULT_LIFETIME);
+            }
             gssContext.requestCredDeleg(true);
             gssContext.requestMutualAuth(true);
 

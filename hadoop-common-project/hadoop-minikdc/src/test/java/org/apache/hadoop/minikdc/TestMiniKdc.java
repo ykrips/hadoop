@@ -28,7 +28,9 @@ import javax.security.auth.kerberos.KerberosPrincipal;
 import javax.security.auth.login.AppConfigurationEntry;
 import javax.security.auth.login.Configuration;
 import javax.security.auth.login.LoginContext;
+
 import java.io.File;
+import java.net.MalformedURLException;
 import java.security.Principal;
 import java.util.Set;
 import java.util.Map;
@@ -37,6 +39,8 @@ import java.util.HashMap;
 import java.util.Arrays;
 
 public class TestMiniKdc extends KerberosSecurityTestcase {
+  
+  private static final boolean IBM_JAVA = System.getProperty("java.vendor").contains("IBM");
 
   @Test
   public void testMiniKdcStart() {
@@ -86,7 +90,7 @@ public class TestMiniKdc extends KerberosSecurityTestcase {
     }
 
     private static String getKrb5LoginModuleName() {
-      return System.getProperty("java.vendor").contains("IBM")
+      return IBM_JAVA
               ? "com.ibm.security.auth.module.Krb5LoginModule"
               : "com.sun.security.auth.module.Krb5LoginModule";
     }
@@ -94,15 +98,23 @@ public class TestMiniKdc extends KerberosSecurityTestcase {
     @Override
     public AppConfigurationEntry[] getAppConfigurationEntry(String name) {
       Map<String, String> options = new HashMap<String, String>();
-      options.put("keyTab", keytab);
       options.put("principal", principal);
-      options.put("useKeyTab", "true");
-      options.put("storeKey", "true");
-      options.put("doNotPrompt", "true");
-      options.put("useTicketCache", "true");
-      options.put("renewTGT", "true");
-      options.put("refreshKrb5Config", "true");
-      options.put("isInitiator", Boolean.toString(isInitiator));
+      if (IBM_JAVA) {
+        try {
+          options.put("useKeytab", new File(keytab).toURI().toURL().toString());
+        } catch (MalformedURLException e) {
+        }
+        options.put("credsType", "both");
+      } else {
+        options.put("keyTab", keytab);
+        options.put("useKeyTab", "true");
+        options.put("storeKey", "true");
+        options.put("doNotPrompt", "true");
+        options.put("useTicketCache", "true");
+        options.put("renewTGT", "true");
+        options.put("refreshKrb5Config", "true");
+        options.put("isInitiator", Boolean.toString(isInitiator));
+      }
       String ticketCache = System.getenv("KRB5CCNAME");
       if (ticketCache != null) {
         options.put("ticketCache", ticketCache);

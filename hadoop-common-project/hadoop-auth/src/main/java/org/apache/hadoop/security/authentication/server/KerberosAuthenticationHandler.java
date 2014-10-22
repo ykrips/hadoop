@@ -37,6 +37,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
@@ -83,8 +84,10 @@ public class KerberosAuthenticationHandler implements AuthenticationHandler {
     public AppConfigurationEntry[] getAppConfigurationEntry(String name) {
       Map<String, String> options = new HashMap<String, String>();
       if (IBM_JAVA) {
-        options.put("useKeytab",
-            keytab.startsWith("file://") ? keytab : "file://" + keytab);
+        try {
+          options.put("useKeytab", new File(keytab).getAbsoluteFile().toURI().toURL().toString());
+        } catch (MalformedURLException e) {
+        }
         options.put("principal", principal);
         options.put("credsType", "acceptor");
       } else {
